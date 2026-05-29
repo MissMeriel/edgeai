@@ -1,0 +1,36 @@
+# save as: requirements-training.txt
+
+# Data & Annotation
+fiftyone>=0.24.0
+opencv-python-headless>=4.10.0
+
+# Training UI
+streamlit>=1.31.0
+streamlit-autorefresh>=1.0.1
+streamlit-option-menu>=0.3.12
+
+# Deep Learning
+torch>=2.3.0
+torchvision>=0.18.0
+ultralytics>=8.2.0
+
+# Hyperparameter Optimization
+optuna>=3.5.0
+optuna-dashboard>=0.15.0
+
+# Training Monitoring
+tensorboard>=2.15.0
+torch-tb-profiler>=0.4.0
+
+# Visualization
+matplotlib>=3.8.0
+seaborn>=0.13.0
+plotly>=5.19.0
+pandas>=2.1.0
+
+# Utilities
+pyyaml>=6.0
+tqdm>=4.66.0
+pillow>=10.3.0
+numpy>=1.26.0
+scikit-learn>=1.4.0

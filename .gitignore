@@ -5,8 +5,11 @@ vehicle_datasets/
 fiftyone_labelling/models
 fiftyone_labelling/my_export
 version_graveyard/
+finetune/runs
+finetune/wandb
+
 
 # binaries
 .venv-eai/
-__pycache__/
-.DS_Store
+*__pycache__/
+*.DS_Store

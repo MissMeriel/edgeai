@@ -1,0 +1,96 @@
+# save as: docker-compose-complete.yml
+
+version: '3.8'
+
+services:
+  # FiftyOne annotation interface
+  fiftyone:
+    build:
+      context: .
+      dockerfile: Dockerfile.fiftyone
+    container_name: fiftyone-app
+    ports:
+      - "5151:5151"
+    volumes:
+      - ./images:/app/images
+      - ./annotations:/app/annotations
+      - fiftyone-db:/data/db
+    environment:
+      - FIFTYONE_DATABASE_URI=mongodb://localhost:27017
+    command: fiftyone
+    restart: unless-stopped
+    networks:
+      - ml-net
+
+  # Streamlit training interface
+  streamlit-training:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: streamlit-training
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./images:/app/images
+      - ./annotations:/app/annotations
+      - ./training_data:/app/training_data
+      - ./trained_models:/app/trained_models
+      - ./training_logs:/app/training_logs
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: streamlit run streamlit_training_ui.py --server.port=8501 --server.address=0.0.0.0
+    restart: unless-stopped
+    networks:
+      - ml-net
+    depends_on:
+      - fiftyone
+
+  # TensorBoard for monitoring
+  tensorboard:
+    image: tensorflow/tensorflow:latest
+    container_name: tensorboard
+    ports:
+      - "6006:6006"
+    volumes:
+      - ./training_logs:/logs
+    command: tensorboard --logdir=/logs --host=0.0.0.0
+    restart: unless-stopped
+    networks:
+      - ml-net
+
+  # Optuna dashboard for AutoML
+  optuna-dashboard:
+    image: ghcr.io/optuna/optuna-dashboard:latest
+    container_name: optuna-dashboard
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./optuna_studies:/studies
+    command: optuna-dashboard --host 0.0.0.0 --port 8080 sqlite:////studies/optuna.db
+    restart: unless-stopped
+    networks:
+      - ml-net
+
+  # Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: ml-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx-complete.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - fiftyone
+      - streamlit-training
+      - tensorboard
+      - optuna-dashboard
+    restart: unless-stopped
+    networks:
+      - ml-net
+
+volumes:
+  fiftyone-db:
+
+networks:
+  ml-net:
+    driver: bridge
