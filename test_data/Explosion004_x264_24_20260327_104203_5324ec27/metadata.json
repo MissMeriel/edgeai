@@ -1,0 +1,30 @@
+{
+  "video_path": "/home/RAND.ORG/mvonstein/edgeai/datasets/DCSASS/DCSASS_Dataset/Explosion/Explosion004_x264.mp4/Explosion004_x264_24.mp4",
+  "video_name": "Explosion004_x264_24.mp4",
+  "output_dir": "extracted_frames/Explosion004_x264_24_20260327_104203_5324ec27",
+  "extraction_time": "2026-03-27T10:42:03.721306",
+  "frames_per_second": 2.0,
+  "video_fps": 30.0,
+  "frame_interval": 15,
+  "start_time": 0,
+  "end_time": 1.0,
+  "video_resolution": "320x240",
+  "extraction_method": "opencv",
+  "frames": [
+    {
+      "filename": "frame_000000_t0.00s.jpg",
+      "filepath": "extracted_frames/Explosion004_x264_24_20260327_104203_5324ec27/frame_000000_t0.00s.jpg",
+      "frame_number": 0,
+      "timestamp": 0.0,
+      "extracted_index": 0
+    },
+    {
+      "filename": "frame_000001_t0.50s.jpg",
+      "filepath": "extracted_frames/Explosion004_x264_24_20260327_104203_5324ec27/frame_000001_t0.50s.jpg",
+      "frame_number": 15,
+      "timestamp": 0.5,
+      "extracted_index": 1
+    }
+  ],
+  "total_frames_extracted": 2
+}
