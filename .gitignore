@@ -1,0 +1,12 @@
+# data
+datasets/
+extracted_frames/
+vehicle_datasets/
+fiftyone_labelling/models
+fiftyone_labelling/my_export
+version_graveyard/
+
+# binaries
+.venv-eai/
+__pycache__/
+.DS_Store
