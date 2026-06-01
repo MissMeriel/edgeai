@@ -1,15 +1,20 @@
 # data
 datasets/
+dataset_zips/
 extracted_frames/
 vehicle_datasets/
 fiftyone_labelling/models
 fiftyone_labelling/my_export
 version_graveyard/
-finetune/runs
-finetune/wandb
 
+# model weights
+scenewise_data_cleaning/resnet50_places365.pth
+
+# training output
+runs/
+finetune/runs/
 
 # binaries
 .venv-eai/
-*__pycache__/
-*.DS_Store
+__pycache__/
+.DS_Store
