@@ -1,0 +1,146 @@
+{
+  "datasets/VisDrone2019-VID-test-dev/sequences/uav0000009_03358_v/": {
+    "scene": "parking_lot",
+    "time": "dawn",
+    "weather": "cloudy",
+    "quality": "high_quality"
+  },
+  "datasets/VisDrone2019-VID-test-dev/sequences/uav0000073_00600_v/": {
+    "scene": "city_street",
+    "time": "night",
+    "weather": "cloudy",
+    "quality": "high_quality"
+  },
+  "datasets/VisDrone2019-VID-test-dev/sequences/uav0000073_04464_v/": {
+    "scene": "parking_lot",
+    "time": "dawn",
+    "weather": "cloudy",
+    "quality": "high_quality"
+  },
+  "datasets/VisDrone2019-VID-test-dev/sequences/uav0000077_00720_v/": {
+    "scene": "parking_lot",
+    "time": "day",
+    "weather": "cloudy",
+    "quality": "high_quality"
+  },
+  "datasets/VisDrone2019-VID-test-dev/sequences/uav0000088_00290_v/": {
+    "scene": "recreation_area",
+    "time": "day",
+    "weather": "cloudy",
+    "quality": "high_quality"
+  },
+  "datasets/VisDrone2019-VID-test-dev/sequences/uav0000119_02301_v/": {
+    "scene": "highway",
+    "time": "night",
+    "weather": "clear",
+    "quality": "high_quality"
+  },
+  "datasets/VisDrone2019-VID-test-dev/sequences/uav0000120_04775_v/": {
+    "scene": "city_street",
+    "time": "night",
+    "weather": "cloudy",
+    "quality": "medium_quality"
+  },
+  "datasets/VisDrone2019-VID-test-dev/sequences/uav0000161_00000_v/": {
+    "scene": "city_street",
+    "time": "day",
+    "weather": "cloudy",
+    "quality": "high_quality"
+  },
+  "datasets/VisDrone2019-VID-test-dev/sequences/uav0000188_00000_v/": {
+    "scene": "city_street",
+    "time": "day",
+    "weather": "cloudy",
+    "quality": "high_quality"
+  },
+  "datasets/VisDrone2019-VID-test-dev/sequences/uav0000201_00000_v/": {
+    "scene": "highway",
+    "time": "day",
+    "weather": "cloudy",
+    "quality": "high_quality"
+  },
+  "datasets/VisDrone2019-VID-test-dev/sequences/uav0000249_00001_v/": {
+    "scene": "city_street",
+    "time": "day",
+    "weather": "clear",
+    "quality": "high_quality"
+  },
+  "datasets/VisDrone2019-VID-test-dev/sequences/uav0000249_02688_v/": {
+    "scene": "city_street",
+    "time": "day",
+    "weather": "sunny",
+    "quality": "high_quality"
+  },
+  "datasets/VisDrone2019-VID-test-dev/sequences/uav0000297_00000_v/": {
+    "scene": "city_street",
+    "time": "day",
+    "weather": "cloudy",
+    "quality": "high_quality"
+  },
+  "datasets/VisDrone2019-VID-test-dev/sequences/uav0000297_02761_v/": {
+    "scene": "city_street",
+    "time": "day",
+    "weather": "cloudy",
+    "quality": "high_quality"
+  },
+  "datasets/VisDrone2019-VID-test-dev/sequences/uav0000306_00230_v/": {
+    "scene": "city_street",
+    "time": "day",
+    "weather": "sunny",
+    "quality": "high_quality"
+  },
+  "datasets/VisDrone2019-VID-test-dev/sequences/uav0000355_00001_v/": {
+    "scene": "city_street",
+    "time": "day",
+    "weather": "sunny",
+    "quality": "high_quality"
+  },
+  "datasets/VisDrone2019-VID-test-dev/sequences/uav0000370_00001_v/": {
+    "scene": "highway",
+    "time": "day",
+    "weather": "sunny",
+    "quality": "medium_quality"
+  },
+  "datasets/VisDrone2019-VID-val/sequences/uav0000086_00000_v/": {
+    "scene": "recreation_area",
+    "time": "day",
+    "weather": "cloudy",
+    "quality": "high_quality"
+  },
+  "datasets/VisDrone2019-VID-val/sequences/uav0000117_02622_v/": {
+    "scene": "city_street",
+    "time": "night",
+    "weather": "clear",
+    "quality": "medium_quality"
+  },
+  "datasets/VisDrone2019-VID-val/sequences/uav0000137_00458_v/": {
+    "scene": "city_street",
+    "time": "day",
+    "weather": "cloudy",
+    "quality": "high_quality"
+  },
+  "datasets/VisDrone2019-VID-val/sequences/uav0000182_00000_v/": {
+    "scene": "city_street",
+    "time": "day",
+    "weather": "cloudy",
+    "quality": "high_quality"
+  },
+  "datasets/VisDrone2019-VID-val/sequences/uav0000268_05773_v/": {
+    "scene": "highway",
+    "time": "day",
+    "weather": "clear",
+    "quality": "high_quality"
+  },
+  "datasets/VisDrone2019-VID-val/sequences/uav0000305_00000_v/": {
+    "scene": "city_street",
+    "time": "day",
+    "weather": "clear",
+    "quality": "high_quality"
+  },
+  "datasets/VisDrone2019-VID-val/sequences/uav0000339_00001_v/": {
+    "scene": "city_street",
+    "time": "day",
+    "weather": "sunny",
+    "quality": "high_quality"
+  }
+}
