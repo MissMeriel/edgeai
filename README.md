@@ -1,5 +1,9 @@
 # EdgeAI
 
+## Thesis
+
+Changing deployment circumstances and austere environments beget the need for edge AI. 
+
 ## Instructions for Human Labellers
 
 Assume you have a machine where the fiftyone interface is already set up. Open `http://localhost:5151` in a browser. Firefox often works well. It should say `http://localhost:5151/datasets/annotation_dataset` in the search bar and the interface should look like this:
@@ -107,9 +111,13 @@ python3 fix_image_loading.py ./test_data/Explosion004_x264_24_20260327_104203_53
 ### Roadmap
 
 ### TODOs
+| Timeframe    | Deliverable           | Notes                |
+|--------------|-----------------------|----------------------|
+| End of June  | Project wrap-up       | Present to K. Best   |
+
 
 ### Support 
 Meriel von Stein, CS PhD, RAND Info Scientist, mvonstein@rand.org
 
 ### Contributing
-
+See also: https://code.rand.org/lazhang/mlopplot

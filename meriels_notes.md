@@ -1,4 +1,12 @@
 # EdgeAI
+## July 20 2026
+finetune_sequence
+
+in root:
+python sequence_distance.py \
+  datasets/VisDrone2019-VID-val/sequences/uav0000305_00000_v \
+  datasets/VisDrone2019-VID-val/sequences/uav0000339_00001_v \
+  --max-frames 60
 
 ## Instructions for Human Labellers
 This pipeline relies on Python 3.12.8. Follow the [link](https://www.python.org/downloads/release/python-3128/) for installation instructions. After installation, check what python version you have active in your terminal by running `python --version`. Your output should match `Python 3.12.8`.
