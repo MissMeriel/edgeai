@@ -201,6 +201,17 @@ Explicitly name one or more sequences to hold out (by bare directory name, e.g. 
 ### Training
 
 ```bash
+# Single sequence — train and validate on one sequence each (bypasses catalogue):
+python finetune_sequence/train_sequence.py \
+    --train-sequence datasets/VisDrone2019-VID-test-dev/sequences/uav0000009_03358_v \
+    --validate-sequence datasets/VisDrone2019-VID-val/sequences/uav0000268_05773_v \
+    --family yolo --technique freeze
+
+# Single sequence — omit --validate-sequence to reuse the train sequence as val:
+python finetune_sequence/train_sequence.py \
+    --train-sequence datasets/VisDrone2019-VID-test-dev/sequences/uav0000009_03358_v \
+    --family frcnn --technique lora
+
 # All sequences combined, two_stage YOLO, hold out one sequence:
 python finetune_sequence/train_sequence.py \
     --sequences-json datasets/sequences_categories.json \
@@ -339,3 +350,20 @@ After validation, `validate_sequence.py` writes:
 | `--min-sequences` | `2` | Skip groups with fewer sequences than this |
 | `--seed` | `42` | Controls val sequence random selection |
 | `--device` | *(auto)* | `cpu`, `cuda`, `cuda:0`, `mps` |
+| `--train-sequence` | *(none)* | Absolute path to a single sequence directory to train on — bypasses `--sequences-json` and all grouping |
+| `--validate-sequence` | *(none)* | Absolute path to a single sequence directory to validate against; defaults to the train sequence if omitted |
+| `--offload-assigner-cpu` | off | *(YOLO)* Move label-assignment op to CPU — fixes OOM in `TaskAlignedAssigner` on dense/large-image batches with negligible speed impact |
+| `--val-on-cpu` | off | Run val pass on CPU each epoch. For FRCNN: model moves to CPU for val then back to GPU for training. For YOLO: re-runs final `best.pt` val on CPU at reduced batch size |
+
+### GPU memory troubleshooting
+
+If you hit a CUDA `OutOfMemoryError` during training, work through these options roughly cheapest-first:
+
+| Symptom | Fix |
+| --- | --- |
+| OOM in `TaskAlignedAssigner` during YOLO training | `--offload-assigner-cpu` |
+| OOM during val loop (FRCNN or YOLO final val) | `--val-on-cpu` |
+| OOM during forward/backward pass | Reduce `--batch-yolo` / `--batch-frcnn` |
+| OOM on large images | Reduce `--imgsz` (e.g. 640 → 480) |
+| OOM with temporal technique | Temporal doubles the per-step batch; halve `--batch-frcnn` |
+| Persistent OOM on GPU | `--device cpu` to run entirely on CPU |

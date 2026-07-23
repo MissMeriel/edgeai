@@ -238,6 +238,24 @@ def load_sequence_catalogue(json_path: Path) -> dict[str, dict]:
     return catalogue
 
 
+def _catalogue_entry_from_path(seq_path: Path) -> tuple[str, dict]:
+    """
+    Build a synthetic catalogue entry from a bare sequence directory path.
+    Annotation file is inferred as <dataset_root>/annotations/<seq_name>.txt,
+    matching the standard VisDrone VID layout.
+    """
+    seq_path = seq_path.resolve()
+    seq_name = seq_path.name
+    ann_txt = seq_path.parent.parent / "annotations" / f"{seq_name}.txt"
+    return seq_name, {
+        "scene": "unknown", "time": "unknown",
+        "weather": "unknown", "quality": "unknown",
+        "images_dir": seq_path,
+        "ann_txt": ann_txt,
+        "path_str": str(seq_path),
+    }
+
+
 def group_sequences(catalogue: dict[str, dict], group_by: str) -> dict[str, list[str]]:
     """
     Returns { group_label: [seq_name, ...] } based on the grouping mode.
@@ -614,6 +632,41 @@ def _build_frcnn(num_classes: int, model_key: str) -> torch.nn.Module:
 # YOLO training
 # ---------------------------------------------------------------------------
 
+def _patch_assigner_cpu():
+    """Monkey-patch TaskAlignedAssigner so assignment runs on CPU.
+
+    TaskAlignedAssigner builds alignment matrices over all anchors × GT boxes.
+    On large images with dense annotations it can OOM on the GPU. The patch
+    moves all inputs to CPU for the assignment step and copies the result
+    indices back to the original device — the actual forward/backward pass
+    is unaffected, so training speed is barely changed.
+    """
+    try:
+        from ultralytics.utils.tal import TaskAlignedAssigner
+    except ImportError:
+        return  # older ultralytics without this module — skip silently
+
+    if getattr(TaskAlignedAssigner, "_cpu_patched", False):
+        return  # already patched
+
+    _orig_forward = TaskAlignedAssigner.forward
+
+    def _cpu_forward(self, pd_scores, pd_bboxes, anc_points, gt_labels, gt_bboxes,
+                     mask_gt):
+        dev = pd_scores.device
+        result = _orig_forward(
+            self,
+            pd_scores.cpu(), pd_bboxes.cpu(), anc_points.cpu(),
+            gt_labels.cpu(), gt_bboxes.cpu(), mask_gt.cpu(),
+        )
+        # result is a tuple of tensors — move each back to original device
+        return tuple(t.to(dev) if isinstance(t, torch.Tensor) else t for t in result)
+
+    TaskAlignedAssigner.forward = _cpu_forward
+    TaskAlignedAssigner._cpu_patched = True
+    print("  [offload-assigner-cpu] TaskAlignedAssigner patched to run on CPU")
+
+
 def train_yolo(
     data_yaml: Path,
     model_key: str,
@@ -623,11 +676,16 @@ def train_yolo(
     imgsz: int,
     out_dir: Path,
     device: str,
+    offload_assigner_cpu: bool = False,
+    val_on_cpu: bool = False,
 ) -> dict:
     try:
         from ultralytics import YOLO
     except ImportError:
         sys.exit("ultralytics not found")
+
+    if offload_assigner_cpu:
+        _patch_assigner_cpu()
 
     t_start = time.time()
     weights = YOLO_MODELS.get(model_key, model_key)
@@ -684,6 +742,19 @@ def train_yolo(
                 if _.suffix.lower() in {".jpg", ".jpeg", ".png"})
     map50 = rd.get("metrics/mAP50(B)")
     map50_95 = rd.get("metrics/mAP50-95(B)")
+
+    if val_on_cpu and best_weights.exists():
+        # The built-in trainer val pass runs on the training device; redo on CPU
+        # so OOM from dense-annotation scenes doesn't block metric collection.
+        print("  [val-on-cpu] Running final val pass on CPU ...")
+        val_results = YOLO(str(best_weights)).val(
+            data=str(data_yaml.resolve()), split="val",
+            imgsz=imgsz, batch=max(1, batch // 2), device="cpu", verbose=False,
+        )
+        vrd = val_results.results_dict
+        map50 = vrd.get("metrics/mAP50(B)", map50)
+        map50_95 = vrd.get("metrics/mAP50-95(B)", map50_95)
+
     print(f"  YOLO done. mAP50={map50}  mAP50-95={map50_95}  time={elapsed:.0f}s")
     return {
         "best_weights": str(best_weights),
@@ -709,6 +780,7 @@ def train_frcnn(
     out_dir: Path,
     device_str: str,
     lora_rank: int,
+    val_on_cpu: bool = False,
 ) -> dict:
     import torchvision.transforms.v2 as T
     from torch.utils.data import DataLoader
@@ -939,14 +1011,19 @@ def train_frcnn(
 
         train_loss = total_loss / max(1, len(train_loader))
 
+        val_device = torch.device("cpu") if val_on_cpu else device
+        if val_on_cpu:
+            model.cpu()
         model.train()
         val_total = 0.0
         with torch.no_grad():
             for images, targets in val_loader:
-                images = [im.to(device) for im in images]
-                targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
+                images = [im.to(val_device) for im in images]
+                targets = [{k: v.to(val_device) for k, v in t.items()} for t in targets]
                 val_total += sum(model(images, targets).values()).item()
         val_loss = val_total / max(1, len(val_loader))
+        if val_on_cpu:
+            model.to(device)
 
         scheduler.step()
         print(f"  Epoch {epoch:3d}/{epochs} | train={train_loss:.4f} | val={val_loss:.4f}")
@@ -1037,10 +1114,96 @@ def run(
     device: str,
     extra_classes: list[str],
     min_sequences: int,
+    offload_assigner_cpu: bool = False,
+    val_on_cpu: bool = False,
+    train_sequence_path: str | None = None,
+    validate_sequence_path: str | None = None,
 ):
     techniques_set = set(techniques)
     out_root = Path(project)
     out_root.mkdir(parents=True, exist_ok=True)
+
+    # --train-sequence / --validate-sequence: bypass catalogue entirely
+    if train_sequence_path is not None:
+        train_name, train_entry = _catalogue_entry_from_path(Path(train_sequence_path))
+        if validate_sequence_path is not None:
+            val_name, val_entry = _catalogue_entry_from_path(Path(validate_sequence_path))
+        else:
+            val_name, val_entry = train_name, train_entry
+            print("  WARNING: no --validate-sequence given; using train sequence for val")
+
+        catalogue = {train_name: train_entry, val_name: val_entry}
+        train_seqs = [train_name]
+        val_seqs = [val_name]
+
+        for seq_name, meta in catalogue.items():
+            if not meta["images_dir"].exists():
+                sys.exit(f"ERROR: sequence directory not found: {meta['images_dir']}")
+            if not meta["ann_txt"].exists():
+                sys.exit(f"ERROR: annotation file not found: {meta['ann_txt']}")
+
+        print(f"\nSingle-sequence mode:")
+        print(f"  Train: {train_entry['images_dir']}")
+        print(f"  Val:   {val_entry['images_dir']}")
+
+        data_dir = out_root / "data" / "single"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        exported = export_sequence_split(
+            train_seqs, val_seqs, catalogue, data_dir, frame_stride, extra_classes)
+        if exported is None:
+            sys.exit("ERROR: no frames exported from the supplied sequence(s)")
+
+        data_yaml = exported / "dataset.yaml"
+        group_results = {}
+
+        if family in ("yolo", "both"):
+            yolo_out = out_root / "models" / "single" / "yolo"
+            print(f"\n[YOLO] techniques={sorted(techniques_set)}")
+            try:
+                group_results["yolo"] = train_yolo(
+                    data_yaml=data_yaml, model_key=yolo_model,
+                    techniques=techniques_set, epochs=epochs_yolo,
+                    batch=batch_yolo, imgsz=imgsz, out_dir=yolo_out, device=device,
+                    offload_assigner_cpu=offload_assigner_cpu, val_on_cpu=val_on_cpu)
+            except Exception as e:
+                print(f"  ERROR YOLO: {e}\n{traceback.format_exc()}")
+                group_results["yolo"] = {"error": str(e)}
+
+        if family in ("frcnn", "both"):
+            frcnn_out = out_root / "models" / "single" / "frcnn"
+            print(f"\n[FRCNN] techniques={sorted(techniques_set)}")
+            try:
+                group_results["frcnn"] = train_frcnn(
+                    data_dir=exported, model_key=frcnn_model,
+                    techniques=techniques_set, epochs=epochs_frcnn,
+                    batch=batch_frcnn, lr=lr, out_dir=frcnn_out,
+                    device_str=device, lora_rank=lora_rank, val_on_cpu=val_on_cpu)
+            except Exception as e:
+                print(f"  ERROR FRCNN: {e}\n{traceback.format_exc()}")
+                group_results["frcnn"] = {"error": str(e)}
+
+        group_results["train_sequences"] = train_seqs
+        group_results["val_sequences"] = val_seqs
+        all_results = {"single": group_results}
+
+        config = {
+            "sequences_json": sequences_json, "group_by": group_by, "family": family,
+            "techniques": list(techniques_set), "val_sequences": val_sequences,
+            "val_split_by": val_split_by, "yolo_model": yolo_model, "frcnn_model": frcnn_model,
+            "epochs_yolo": epochs_yolo, "epochs_frcnn": epochs_frcnn,
+            "batch_yolo": batch_yolo, "batch_frcnn": batch_frcnn,
+            "imgsz": imgsz, "lr": lr, "lora_rank": lora_rank,
+            "frame_stride": frame_stride, "seed": seed, "extra_classes": extra_classes,
+            "project": project, "device": device, "min_sequences": min_sequences,
+            "offload_assigner_cpu": offload_assigner_cpu, "val_on_cpu": val_on_cpu,
+            "train_sequence_path": train_sequence_path,
+            "validate_sequence_path": validate_sequence_path,
+        }
+        (out_root / "training_config.json").write_text(json.dumps(config, indent=2, default=str))
+        (out_root / "training_summary.json").write_text(
+            json.dumps(all_results, indent=2, default=str))
+        print(f"\nDone. Summary → {out_root / 'training_summary.json'}")
+        return
 
     catalogue = load_sequence_catalogue(Path(sequences_json))
     print(f"\nLoaded {len(catalogue)} sequences from {sequences_json}")
@@ -1106,7 +1269,8 @@ def run(
                 group_results["yolo"] = train_yolo(
                     data_yaml=data_yaml, model_key=yolo_model,
                     techniques=techniques_set, epochs=epochs_yolo,
-                    batch=batch_yolo, imgsz=imgsz, out_dir=yolo_out, device=device)
+                    batch=batch_yolo, imgsz=imgsz, out_dir=yolo_out, device=device,
+                    offload_assigner_cpu=offload_assigner_cpu, val_on_cpu=val_on_cpu)
             except Exception as e:
                 print(f"  ERROR YOLO: {e}\n{traceback.format_exc()}")
                 group_results["yolo"] = {"error": str(e)}
@@ -1119,7 +1283,7 @@ def run(
                     data_dir=exported, model_key=frcnn_model,
                     techniques=techniques_set, epochs=epochs_frcnn,
                     batch=batch_frcnn, lr=lr, out_dir=frcnn_out,
-                    device_str=device, lora_rank=lora_rank)
+                    device_str=device, lora_rank=lora_rank, val_on_cpu=val_on_cpu)
             except Exception as e:
                 print(f"  ERROR FRCNN: {e}\n{traceback.format_exc()}")
                 group_results["frcnn"] = {"error": str(e)}
@@ -1137,6 +1301,7 @@ def run(
         "imgsz": imgsz, "lr": lr, "lora_rank": lora_rank,
         "frame_stride": frame_stride, "seed": seed, "extra_classes": extra_classes,
         "project": project, "device": device, "min_sequences": min_sequences,
+        "offload_assigner_cpu": offload_assigner_cpu, "val_on_cpu": val_on_cpu,
     }
     (out_root / "training_config.json").write_text(json.dumps(config, indent=2, default=str))
     (out_root / "training_summary.json").write_text(json.dumps(all_results, indent=2, default=str))
@@ -1211,6 +1376,28 @@ if __name__ == "__main__":
     parser.add_argument("--min-sequences", type=int, default=2,
                         help="Skip groups with fewer than this many sequences (default: 2)")
 
+    single_g = parser.add_argument_group("Single-sequence mode")
+    single_g.add_argument("--train-sequence", default=None, metavar="PATH",
+                          help="Path to a single sequence directory to train on "
+                               "(e.g. datasets/VisDrone2019-VID-test-dev/sequences/uav0000009_03358_v). "
+                               "Bypasses --sequences-json and grouping entirely.")
+    single_g.add_argument("--validate-sequence", default=None, metavar="PATH",
+                          help="Path to a single sequence directory to validate against "
+                               "when using --train-sequence. Defaults to the train sequence "
+                               "if omitted.")
+
+    mem_g = parser.add_argument_group("GPU memory management")
+    mem_g.add_argument("--offload-assigner-cpu", action="store_true",
+                       help="(YOLO) Offload TaskAlignedAssigner label-assignment to CPU. "
+                            "Fixes CUDA OOM in the assigner on dense/large-image batches "
+                            "with negligible training speed impact.")
+    mem_g.add_argument("--val-on-cpu", action="store_true",
+                       help="Run the validation pass on CPU each epoch. "
+                            "For YOLO: re-runs final best.pt val on CPU after training. "
+                            "For FRCNN: moves model to CPU for each epoch val loop then "
+                            "back to GPU for training. Slower per epoch but avoids OOM "
+                            "when val batch accumulates large feature maps.")
+
     _pre = parser.parse_known_args(sys.argv[1:])[0]
     if _pre.config:
         cfg = json.loads(Path(_pre.config).read_text())
@@ -1251,4 +1438,8 @@ if __name__ == "__main__":
         device=args.device,
         extra_classes=args.extra_classes or [],
         min_sequences=args.min_sequences,
+        offload_assigner_cpu=args.offload_assigner_cpu,
+        val_on_cpu=args.val_on_cpu,
+        train_sequence_path=args.train_sequence,
+        validate_sequence_path=args.validate_sequence,
     )
