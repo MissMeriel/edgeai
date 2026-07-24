@@ -219,6 +219,13 @@ python finetune_sequence/train_sequence.py \
     --val-sequences uav0000268_05773_v \
     --family yolo --technique two_stage
 
+# Hold out multiple sequences across groups:
+python finetune_sequence/train_sequence.py \
+    --sequences-json datasets/sequences_categories.json \
+    --group-by scene \
+    --val-sequences uav0000268_05773_v uav0000119_02301_v uav0000086_00000_v \
+    --family frcnn --technique two_stage
+
 # Scene-specialist models, auto-select val sequence per scene:
 python finetune_sequence/train_sequence.py \
     --sequences-json datasets/sequences_categories.json \

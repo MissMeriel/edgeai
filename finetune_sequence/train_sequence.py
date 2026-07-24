@@ -783,6 +783,7 @@ def train_frcnn(
     val_on_cpu: bool = False,
 ) -> dict:
     import torchvision.transforms.v2 as T
+    import torchvision.tv_tensors as tv_tensors
     from torch.utils.data import DataLoader
 
     t_start = time.time()
@@ -802,14 +803,14 @@ def train_frcnn(
         device = torch.device("cpu")
 
     train_tf = T.Compose([
-        T.ToImage(), T.ToDtype(torch.float32, scale=True),
-        T.RandomHorizontalFlip(0.5), T.RandomPhotometricDistort(0.5),
+        T.ToDtype(torch.float32, scale=True),
+        T.RandomHorizontalFlip(0.5), T.RandomPhotometricDistort(p=0.5),
         T.ScaleJitter(target_size=(800, 800), scale_range=(0.5, 2.0)),
         T.RandomCrop(size=(640, 640), pad_if_needed=True),
         T.SanitizeBoundingBoxes(),
     ])
     val_tf = T.Compose([
-        T.ToImage(), T.ToDtype(torch.float32, scale=True),
+        T.ToDtype(torch.float32, scale=True),
         T.Resize(size=640, max_size=1333),
     ])
 
@@ -863,10 +864,16 @@ def train_frcnn(
                             x2 = min(float(w),(cx+bw/2)*w); y2 = min(float(h),(cy+bh/2)*h)
                             if x2-x1<1 or y2-y1<1: continue
                             boxes.append([x1,y1,x2,y2]); labels.append(int(p[0])+1)
-                    t = {"boxes": torch.as_tensor(boxes,dtype=torch.float32).reshape(-1,4),
-                         "labels": torch.as_tensor(labels,dtype=torch.int64),
-                         "image_id": torch.tensor([idx])}
-                    if self.transforms: img, t = self.transforms(img, t)
+                    boxes_t = torch.as_tensor(boxes, dtype=torch.float32).reshape(-1, 4)
+                    labels_t = torch.as_tensor(labels, dtype=torch.int64)
+                    if self.transforms:
+                        img = T.ToImage()(img)
+                        boxes_tv = tv_tensors.BoundingBoxes(
+                            boxes_t, format="XYXY", canvas_size=(img.shape[-2], img.shape[-1]))
+                        img, tgt_out = self.transforms(img, {"boxes": boxes_tv, "labels": labels_t})
+                        boxes_t = tgt_out["boxes"]
+                        labels_t = tgt_out["labels"]
+                    t = {"boxes": boxes_t, "labels": labels_t, "image_id": torch.tensor([idx])}
                     return img, t
             def collate_fn(b): return tuple(zip(*b))
 
@@ -905,10 +912,15 @@ def train_frcnn(
                         x2=min(float(w),(cx+bw/2)*w);y2=min(float(h),(cy+bh/2)*h)
                         if x2-x1<1 or y2-y1<1: continue
                         boxes.append([x1,y1,x2,y2]); labels.append(int(p[0])+1)
-                t={"boxes":torch.as_tensor(boxes,dtype=torch.float32).reshape(-1,4),
-                   "labels":torch.as_tensor(labels,dtype=torch.int64),
-                   "image_id":torch.tensor([idx])}
-                if self.transforms: img,t=self.transforms(img,t)
+                boxes_t=torch.as_tensor(boxes,dtype=torch.float32).reshape(-1,4)
+                labels_t=torch.as_tensor(labels,dtype=torch.int64)
+                if self.transforms:
+                    img=T.ToImage()(img)
+                    boxes_tv=tv_tensors.BoundingBoxes(
+                        boxes_t,format="XYXY",canvas_size=(img.shape[-2],img.shape[-1]))
+                    img,tgt_out=self.transforms(img,{"boxes":boxes_tv,"labels":labels_t})
+                    boxes_t=tgt_out["boxes"]; labels_t=tgt_out["labels"]
+                t={"boxes":boxes_t,"labels":labels_t,"image_id":torch.tensor([idx])}
                 return img,t
         val_ds = _SimplDS(data_dir/"images"/"val", data_dir/"labels"/"val", classes, val_tf)
 

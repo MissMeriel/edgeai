@@ -53,6 +53,7 @@ from pathlib import Path
 
 import torch
 import torchvision.transforms.v2 as T
+import torchvision.tv_tensors as tv_tensors
 import yaml
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
@@ -114,23 +115,31 @@ class YOLODetectionDataset(Dataset):
         boxes = torch.as_tensor(boxes, dtype=torch.float32).reshape(-1, 4)
         labels = torch.as_tensor(labels, dtype=torch.int64)
 
+        # v2 transforms require BoundingBoxes tv_tensor so spatial transforms
+        # (ScaleJitter, RandomCrop, SanitizeBoundingBoxes) can track the boxes.
+        # Pass target as a dict so SanitizeBoundingBoxes can locate the labels.
+        if self.transforms:
+            image = T.ToImage()(image)
+            boxes_tv = tv_tensors.BoundingBoxes(
+                boxes, format="XYXY", canvas_size=(image.shape[-2], image.shape[-1])
+            )
+            image, tgt_out = self.transforms(image, {"boxes": boxes_tv, "labels": labels})
+            boxes = tgt_out["boxes"]
+            labels = tgt_out["labels"]
+
         target = {
             "boxes": boxes,
             "labels": labels,
             "image_id": torch.tensor([idx]),
         }
 
-        if self.transforms:
-            image, target = self.transforms(image, target)
-
         return image, target
 
 
 def get_train_transforms():
+    # ToImage/ToDtype are applied in __getitem__ before wrapping BoundingBoxes.
     return T.Compose([
-        T.ToImage(),
         T.ToDtype(torch.float32, scale=True),
-        # Geometric augmentations for drone footage
         T.RandomHorizontalFlip(p=0.5),
         T.RandomPhotometricDistort(p=0.5),
         T.ScaleJitter(target_size=(800, 800), scale_range=(0.5, 2.0)),
@@ -140,8 +149,8 @@ def get_train_transforms():
 
 
 def get_val_transforms():
+    # ToImage/ToDtype are applied in __getitem__ before wrapping BoundingBoxes.
     return T.Compose([
-        T.ToImage(),
         T.ToDtype(torch.float32, scale=True),
         T.Resize(size=640, max_size=1333),
     ])
