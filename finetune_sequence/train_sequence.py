@@ -457,6 +457,26 @@ def _parse_vid_annotation(
     return frames
 
 # ---------------------------------------------------------------------------
+# Box sanitisation helper
+# ---------------------------------------------------------------------------
+
+def _filter_degenerate_boxes(
+    boxes_t: "torch.Tensor", labels_t: "torch.Tensor", min_size: float = 1.0
+) -> tuple["torch.Tensor", "torch.Tensor"]:
+    """
+    Remove boxes where width or height is < min_size after augmentation.
+    Augmentations such as RandomCrop can clip a box to exactly the crop edge,
+    producing zero-area boxes that torchvision's generalised RCNN rejects.
+    """
+    if boxes_t.numel() == 0:
+        return boxes_t, labels_t
+    widths  = boxes_t[:, 2] - boxes_t[:, 0]
+    heights = boxes_t[:, 3] - boxes_t[:, 1]
+    keep = (widths >= min_size) & (heights >= min_size)
+    return boxes_t[keep], labels_t[keep]
+
+
+# ---------------------------------------------------------------------------
 # Temporal dataset (FRCNN only)
 # ---------------------------------------------------------------------------
 
@@ -536,6 +556,7 @@ class TemporalVIDDataset(torch.utils.data.Dataset):
                 image, {"boxes": boxes_tv, "labels": labels_t})
             boxes_t = torch.as_tensor(tgt_out["boxes"], dtype=torch.float32).reshape(-1, 4)
             labels_t = tgt_out["labels"]
+            boxes_t, labels_t = _filter_degenerate_boxes(boxes_t, labels_t)
         target = {"boxes": boxes_t, "labels": labels_t, "image_id": torch.tensor([idx])}
         return image, target
 
@@ -882,8 +903,9 @@ def train_frcnn(
                         boxes_tv = tv_tensors.BoundingBoxes(
                             boxes_t, format="XYXY", canvas_size=(img.shape[-2], img.shape[-1]))
                         img, tgt_out = self.transforms(img, {"boxes": boxes_tv, "labels": labels_t})
-                        boxes_t = tgt_out["boxes"]
+                        boxes_t = torch.as_tensor(tgt_out["boxes"], dtype=torch.float32).reshape(-1, 4)
                         labels_t = tgt_out["labels"]
+                        boxes_t, labels_t = _filter_degenerate_boxes(boxes_t, labels_t)
                     t = {"boxes": boxes_t, "labels": labels_t, "image_id": torch.tensor([idx])}
                     return img, t
             def collate_fn(b): return tuple(zip(*b))
@@ -930,7 +952,9 @@ def train_frcnn(
                     boxes_tv=tv_tensors.BoundingBoxes(
                         boxes_t,format="XYXY",canvas_size=(img.shape[-2],img.shape[-1]))
                     img,tgt_out=self.transforms(img,{"boxes":boxes_tv,"labels":labels_t})
-                    boxes_t=tgt_out["boxes"]; labels_t=tgt_out["labels"]
+                    boxes_t=torch.as_tensor(tgt_out["boxes"],dtype=torch.float32).reshape(-1,4)
+                    labels_t=tgt_out["labels"]
+                    boxes_t,labels_t=_filter_degenerate_boxes(boxes_t,labels_t)
                 t={"boxes":boxes_t,"labels":labels_t,"image_id":torch.tensor([idx])}
                 return img,t
         val_ds = _SimplDS(data_dir/"images"/"val", data_dir/"labels"/"val", classes, val_tf)
