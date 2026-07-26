@@ -502,6 +502,8 @@ class TemporalVIDDataset(torch.utils.data.Dataset):
 
     def _load_sample(self, idx):
         from PIL import Image as _PIL
+        import torchvision.transforms.v2 as _T
+        import torchvision.tv_tensors as _tv
         img_path = self.image_paths[idx]
         image = _PIL.open(img_path).convert("RGB")
         w, h = image.size
@@ -525,9 +527,16 @@ class TemporalVIDDataset(torch.utils.data.Dataset):
                 labels.append(cls_id + 1)
         boxes_t = torch.as_tensor(boxes, dtype=torch.float32).reshape(-1, 4)
         labels_t = torch.as_tensor(labels, dtype=torch.int64)
-        target = {"boxes": boxes_t, "labels": labels_t, "image_id": torch.tensor([idx])}
         if self.transforms:
-            image, target = self.transforms(image, target)
+            image = _T.ToImage()(image)
+            boxes_tv = _tv.BoundingBoxes(
+                boxes_t, format="XYXY",
+                canvas_size=(image.shape[-2], image.shape[-1]))
+            image, tgt_out = self.transforms(
+                image, {"boxes": boxes_tv, "labels": labels_t})
+            boxes_t = torch.as_tensor(tgt_out["boxes"], dtype=torch.float32).reshape(-1, 4)
+            labels_t = tgt_out["labels"]
+        target = {"boxes": boxes_t, "labels": labels_t, "image_id": torch.tensor([idx])}
         return image, target
 
     def _adjacent_idx(self, idx: int) -> int:
@@ -807,7 +816,9 @@ def train_frcnn(
         T.RandomHorizontalFlip(0.5), T.RandomPhotometricDistort(p=0.5),
         T.ScaleJitter(target_size=(800, 800), scale_range=(0.5, 2.0)),
         T.RandomCrop(size=(640, 640), pad_if_needed=True),
-        T.SanitizeBoundingBoxes(),
+        # SanitizeBoundingBoxes omitted: it requires tv_tensors.BoundingBoxes and
+        # crashes on background frames (zero annotations). Boxes are already
+        # clipped and size-filtered in _load_sample before reaching transforms.
     ])
     val_tf = T.Compose([
         T.ToDtype(torch.float32, scale=True),
