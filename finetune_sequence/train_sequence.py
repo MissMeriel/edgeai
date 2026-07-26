@@ -1028,22 +1028,32 @@ def train_frcnn(
             for images, targets, adj_images, adj_targets in train_loader:
                 images = [im.to(device) for im in images]
                 targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
+
+                # Primary pass — backward immediately so its graph is freed before
+                # loading the adjacent batch, keeping peak VRAM at one graph at a time.
+                optimizer.zero_grad()
+                loss_dict = model(images, targets)
+                losses = sum(loss_dict.values())
+                losses.backward()
+
+                # Free primary activations before running adjacent forward pass
+                del images, targets, loss_dict
+                torch.cuda.empty_cache()
+
                 adj_images = [im.to(device) for im in adj_images]
                 adj_targets = [{k: v.to(device) for k, v in t.items()} for t in adj_targets]
 
-                loss_dict = model(images, targets)
-                losses = sum(loss_dict.values())
-
-                # Temporal regularisation: adjacent frame loss at reduced weight
+                # Adjacent-frame pass — accumulate gradients (no zero_grad) at alpha weight
                 adj_loss_dict = model(adj_images, adj_targets)
                 adj_losses = sum(adj_loss_dict.values()) * temporal_weight
-                total_batch_loss = losses + adj_losses
+                adj_losses.backward()
 
-                optimizer.zero_grad()
-                total_batch_loss.backward()
+                del adj_images, adj_targets, adj_loss_dict
+                torch.cuda.empty_cache()
+
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)
                 optimizer.step()
-                total_loss += total_batch_loss.item()
+                total_loss += losses.item() + adj_losses.item()
         else:
             for images, targets in train_loader:
                 images = [im.to(device) for im in images]
